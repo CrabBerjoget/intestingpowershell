@@ -77,15 +77,18 @@ if (-not (Test-Path $unrarPath)) {
     }
 }
 
-# --- Step 8: Extract RAR files ---
+# --- Step 8: Extract RAR files silently to the same folder ---
+
 $rarFiles = Get-ChildItem -Path $gamePath -Recurse -Filter *.rar
 foreach ($rar in $rarFiles) {
-    if ($unrarPath -and (Test-Path $unrarPath)) {
-        Write-Host "Extracting $($rar.FullName)"
-        Start-Process -FilePath $unrarPath -ArgumentList "x `"$($rar.FullName)`" `"$gamePath`" -y" -Wait
-        Remove-Item $rar.FullName -Force
-    } else {
-        Write-Host "UnRAR.exe not found. Skipping $($rar.Name)"
-    }
+if ($unrarPath -and (Test-Path $unrarPath)) {
+$destination = $rar.DirectoryName  # Extract to same folder as RAR
+Write-Host "Extracting $($rar.FullName) → $destination"
+Start-Process -FilePath $unrarPath -ArgumentList "x `"$($rar.FullName)`" `"$destination`" -y" -NoNewWindow -WindowStyle Hidden -Wait
+Remove-Item $rar.FullName -Force
+} else {
+Write-Host "UnRAR.exe not found. Skipping $($rar.Name)"
+}
 }
 Write-Host "RAR extraction complete!"
+
