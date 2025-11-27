@@ -1,5 +1,5 @@
 # URL to mapping JSON
-$mapUrl = "https://USERNAME.github.io/ps-patches/index.json"
+$mapUrl = "https://CrabBerjoget.github.io/ps-patches/index.json"
 $map = irm $mapUrl
 
 # Get the patch ID from argument
