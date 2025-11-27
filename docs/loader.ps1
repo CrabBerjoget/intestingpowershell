@@ -70,7 +70,7 @@ $unrarPath = Join-Path $gamePath "UnRAR.exe"
 if (-not (Test-Path $unrarPath)) {
     Write-Host "Downloading UnRAR.exe..."
     try {
-        Invoke-WebRequest -Uri "https://github.com/CrabBerjoget/intestingpowershell/raw/main/unrarw32.exe" -OutFile $unrarPath
+        Invoke-WebRequest -Uri "https://github.com/CrabBerjoget/intestingpowershell/raw/main/UnRAR.exe" -OutFile $unrarPath
     } catch {
         Write-Host "Failed to download UnRAR.exe. RAR extraction will be skipped."
         $unrarPath = $null
@@ -84,12 +84,13 @@ foreach ($rar in $rarFiles) {
 if ($unrarPath -and (Test-Path $unrarPath)) {
 $destination = $rar.DirectoryName  # Extract to same folder as RAR
 Write-Host "Extracting $($rar.FullName) → $destination"
-Start-Process -FilePath $unrarPath -ArgumentList "x `"$($rar.FullName)`" `"$destination`" -y" -WindowStyle Hidden -Wait
+Start-Process -FilePath $unrarPath -ArgumentList "x `"$($rar.FullName)`" `"$destination`" -y -inul" -WindowStyle Hidden -Wait
 Remove-Item $rar.FullName -Force
 } else {
 Write-Host "UnRAR.exe not found. Skipping $($rar.Name)"
 }
 }
 Write-Host "RAR extraction complete!"
+
 
 
