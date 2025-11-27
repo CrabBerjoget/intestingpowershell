@@ -1,7 +1,7 @@
 Write-Host "Your remote script is running!"
 Write-Host "This is coming from GitHub RAW."
 
-# test.ps1
+# test.ps1 — download all files from GitHub branch matching AppID
 
 param(
 [string]$AppID = $env:PATCHID  # fallback if using environment variable
@@ -42,23 +42,33 @@ $installDir = ($installDirLine -split '"')[3]
 $gamePath = Join-Path (Join-Path $steamPath "steamapps\common") $installDir
 Write-Host "Detected game folder: $gamePath"
 
-# --- Step 5: Define files to download (replace with your raw URLs) ---
+# --- Step 5: Get file list from GitHub branch using API ---
 
-$files = @(
-"[https://raw.githubusercontent.com/CrabBerjoget/intestingpowershell/2934220/file1.txt](https://raw.githubusercontent.com/CrabBerjoget/intestingpowershell/2934220/file1.txt)",
-"[https://raw.githubusercontent.com/CrabBerjoget/intestingpowershell/2934220/file2.dll](https://raw.githubusercontent.com/CrabBerjoget/intestingpowershell/2934220/file2.dll)"
-)
+$repoOwner = "CrabBerjoget"
+$repoName = "intestingpowershell"
+$branch = $AppID
 
-# --- Step 6: Download files to game folder ---
+$apiUrl = "[https://api.github.com/repos/$repoOwner/$repoName/contents/?ref=$branch](https://api.github.com/repos/$repoOwner/$repoName/contents/?ref=$branch)"
+try {
+$filesList = Invoke-RestMethod -Uri $apiUrl -UseBasicParsing
+} catch {
+Write-Host "Failed to fetch file list from GitHub branch $branch"
+exit
+}
 
-foreach ($fileUrl in $files) {
-$fileName = Split-Path $fileUrl -Leaf
+# --- Step 6: Download all files ---
+
+foreach ($file in $filesList) {
+if ($file.type -eq "file") {
+$fileUrl = $file.download_url
+$fileName = $file.name
 $destination = Join-Path $gamePath $fileName
 Write-Host "Downloading $fileName → $destination"
 try {
 Invoke-WebRequest $fileUrl -OutFile $destination
 } catch {
 Write-Host "Failed to download $fileName"
+}
 }
 }
 
