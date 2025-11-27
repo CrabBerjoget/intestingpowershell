@@ -1,4 +1,4 @@
-# loader.ps1 — download branch as ZIP and patch game
+# loader.ps1 — download branch ZIP, extract to game folder, auto-unrar
 
 # --- Step 0: Get AppID ---
 
@@ -41,13 +41,28 @@ Write-Host "Failed to download ZIP for branch $AppID"
 exit
 }
 
-# --- Step 5: Extract ZIP to game folder ---
+# --- Step 5: Extract ZIP to temp folder and move contents ---
 
-Write-Host "Extracting ZIP to game folder..."
+$tempExtract = Join-Path $env:TEMP "$AppID-extract"
 try {
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-[System.IO.Compression.ZipFile]::ExtractToDirectory($tempZip, $gamePath)
+[System.IO.Compression.ZipFile]::ExtractToDirectory($tempZip, $tempExtract)
 Remove-Item $tempZip -Force
+
+```
+# Move contents from inner folder to game folder
+$innerFolder = Join-Path $tempExtract "intestingpowershell-$AppID"
+Get-ChildItem $innerFolder -Recurse | ForEach-Object {
+    $targetPath = $_.FullName.Replace($innerFolder, $gamePath)
+    if ($_.PSIsContainer) {
+        if (-not (Test-Path $targetPath)) { New-Item -ItemType Directory -Path $targetPath | Out-Null }
+    } else {
+        Copy-Item $_.FullName -Destination $targetPath -Force
+    }
+}
+Remove-Item $tempExtract -Recurse -Force
+```
+
 } catch {
 Write-Host "Failed to extract ZIP"
 exit
