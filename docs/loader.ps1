@@ -1,84 +1,65 @@
-# loader.ps1 — download branch ZIP, extract to game folder, auto-unrar
+# loader.ps1 — fully automatic, no param, uses env PATCHID
 
-# --- Step 0: Get AppID ---
-
+# --- Step 0: Get PatchID ---
 if (-not $env:PATCHID) {
-Write-Host "Please set environment variable PATCHID"
-exit
+    Write-Host "Please set environment variable PATCHID"
+    exit
 }
 $AppID = $env:PATCHID
 Write-Host "Running patch $AppID"
 
 # --- Step 1: Detect Steam Path ---
-
 $steamPath = (Get-ItemProperty "HKLM:\SOFTWARE\WOW6432Node\Valve\Steam" -ErrorAction SilentlyContinue).InstallPath
-if (-not $steamPath) { $steamPath = (Get-ItemProperty "HKCU:\Software\Valve\Steam" -ErrorAction SilentlyContinue).InstallPath }
-if (-not $steamPath) { Write-Host "Steam not found"; exit }
+if (-not $steamPath) {
+    $steamPath = (Get-ItemProperty "HKCU:\Software\Valve\Steam" -ErrorAction SilentlyContinue).InstallPath
+}
+if (-not $steamPath) {
+    Write-Host "Steam installation not found!"
+    exit
+}
 
-# --- Step 2: Find appmanifest ---
-
+# --- Step 2: Find appmanifest for the AppID ---
 $appManifest = Get-ChildItem "$steamPath\steamapps" -Filter "appmanifest_$AppID.acf" -Recurse | Select-Object -First 1
-if (-not $appManifest) { Write-Host "AppID not found"; exit }
+if (-not $appManifest) {
+    Write-Host "AppID $AppID not found in Steam library!"
+    exit
+}
 
-# --- Step 3: Get game folder ---
-
+# --- Step 3: Parse installdir ---
 $acfContent = Get-Content $appManifest.FullName
 $installDirLine = $acfContent | Where-Object { $_ -match '"installdir"' }
 $installDir = ($installDirLine -split '"')[3]
-$gamePath = Join-Path "$steamPath\steamapps\common" $installDir
+
+# --- Step 4: Build full path ---
+$gamePath = Join-Path (Join-Path $steamPath "steamapps\common") $installDir
 Write-Host "Detected game folder: $gamePath"
 
-# --- Step 4: Download branch as ZIP ---
+# --- Step 5: Get file list from GitHub branch ---
+$repoOwner = "CrabBerjoget"
+$repoName = "intestingpowershell"
+$branch = $AppID
+$apiUrl = "https://api.github.com/repos/$repoOwner/$repoName/contents/?ref=$branch"
 
-$zipUrl = "[https://github.com/CrabBerjoget/intestingpowershell/archive/refs/heads/$AppID.zip](https://github.com/CrabBerjoget/intestingpowershell/archive/refs/heads/$AppID.zip)"
-$tempZip = Join-Path $env:TEMP "$AppID.zip"
-
-Write-Host "Downloading branch ZIP..."
 try {
-Invoke-WebRequest -Uri $zipUrl -OutFile $tempZip
+    $filesList = Invoke-RestMethod -Uri $apiUrl -UseBasicParsing -Headers @{ "User-Agent" = "PowerShell" }
 } catch {
-Write-Host "Failed to download ZIP for branch $AppID"
-exit
+    Write-Host "Failed to fetch file list from GitHub branch $branch"
+    exit
 }
 
-# --- Step 5: Extract ZIP to temp folder and move contents ---
-
-$tempExtract = Join-Path $env:TEMP "$AppID-extract"
-try {
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-[System.IO.Compression.ZipFile]::ExtractToDirectory($tempZip, $tempExtract)
-Remove-Item $tempZip -Force
-
-```
-# Move contents from inner folder to game folder
-$innerFolder = Join-Path $tempExtract "intestingpowershell-$AppID"
-Get-ChildItem $innerFolder -Recurse | ForEach-Object {
-    $targetPath = $_.FullName.Replace($innerFolder, $gamePath)
-    if ($_.PSIsContainer) {
-        if (-not (Test-Path $targetPath)) { New-Item -ItemType Directory -Path $targetPath | Out-Null }
-    } else {
-        Copy-Item $_.FullName -Destination $targetPath -Force
+# --- Step 6: Download all files ---
+foreach ($file in $filesList) {
+    if ($file.type -eq "file") {
+        $fileUrl = $file.download_url
+        $fileName = $file.name
+        $destination = Join-Path $gamePath $fileName
+        Write-Host "Downloading $fileName → $destination"
+        try {
+            Invoke-WebRequest $fileUrl -OutFile $destination
+        } catch {
+            Write-Host "Failed to download $fileName"
+        }
     }
-}
-Remove-Item $tempExtract -Recurse -Force
-```
-
-} catch {
-Write-Host "Failed to extract ZIP"
-exit
-}
-
-# --- Step 6: Extract any RAR files inside ---
-
-$rarFiles = Get-ChildItem -Path $gamePath -Recurse -Filter *.rar
-foreach ($rar in $rarFiles) {
-if (Get-Command "UnRAR.exe" -ErrorAction SilentlyContinue) {
-Write-Host "Extracting $($rar.FullName)"
-Start-Process "UnRAR.exe" -ArgumentList "x `"$($rar.FullName)`" `"$gamePath`" -y" -Wait
-Remove-Item $rar.FullName -Force
-} else {
-Write-Host "UnRAR.exe not found. Skipping $($rar.Name)"
-}
 }
 
 Write-Host "Patch complete!"
