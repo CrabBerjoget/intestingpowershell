@@ -1,3 +1,6 @@
+
+
+# --- Step 0: Use AppID from caller ---
 if (-not $AppID) {
     Write-Host "Error: AppID not provided."
     exit
@@ -5,17 +8,6 @@ if (-not $AppID) {
 
 Write-Host "Using AppID: $AppID"
 
-
-
-# loader.ps1 — fully automatic, no param, uses env PATCHID
-
-# --- Step 0: Get PatchID ---
-if (-not $env:PATCHID) {
-    Write-Host "Please set environment variable PATCHID"
-    exit
-}
-$AppID = $env:PATCHID
-Write-Host "Running patch $AppID"
 
 # --- Step 1: Detect Steam Path ---
 $steamPath = (Get-ItemProperty "HKLM:\SOFTWARE\WOW6432Node\Valve\Steam" -ErrorAction SilentlyContinue).InstallPath
