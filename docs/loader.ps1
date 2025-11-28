@@ -19,12 +19,41 @@ if (-not $steamPath) {
     exit
 }
 
-# --- Step 2: Find appmanifest for the AppID ---
-$appManifest = Get-ChildItem "$steamPath\steamapps" -Filter "appmanifest_$AppID.acf" -Recurse | Select-Object -First 1
-if (-not $appManifest) {
-    Write-Host "AppID $AppID not found in Steam library!"
+# --- Step 2: Find appmanifest for the AppID in all Steam library folders ---
+# Read the main libraryfolders.vdf
+$libraryVdfPath = Join-Path $steamPath "steamapps\libraryfolders.vdf"
+if (-not (Test-Path $libraryVdfPath)) {
+    Write-Host "libraryfolders.vdf not found!"
     exit
 }
+
+# Parse libraryfolders.vdf to get all library paths
+$libraryFolders = @($steamPath) # always include main steam path
+$vdfLines = Get-Content $libraryVdfPath
+foreach ($line in $vdfLines) {
+    if ($line -match '^\s*"\d+"\s*"\s*(.+?)\s*"$') {
+        $folder = $matches[1]
+        if (Test-Path $folder) {
+            $libraryFolders += $folder
+        }
+    }
+}
+
+# Search for the appmanifest in all library folders
+$appManifest = $null
+foreach ($folder in $libraryFolders) {
+    $acf = Get-ChildItem -Path (Join-Path $folder "steamapps") -Filter "appmanifest_$AppID.acf" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($acf) {
+        $appManifest = $acf
+        break
+    }
+}
+
+if (-not $appManifest) {
+    Write-Host "AppID $AppID not found in any Steam library folder!"
+    exit
+}
+
 
 # --- Step 3: Parse installdir ---
 $acfContent = Get-Content $appManifest.FullName
