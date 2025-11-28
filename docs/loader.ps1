@@ -1,3 +1,9 @@
+param(
+    [Parameter(Mandatory = $true)]
+    [string]$AppID
+)
+
+Write-Host "Using AppID: $AppID"
 
 # loader.ps1 — fully automatic, no param, uses env PATCHID
 
