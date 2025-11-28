@@ -19,16 +19,15 @@ if (-not $steamPath) {
     exit
 }
 
-# --- Step 2: Find appmanifest for the AppID in all Steam library folders ---
-# Read the main libraryfolders.vdf
-$libraryVdfPath = Join-Path $steamPath "steamapps\libraryfolders.vdf"
+# --- Step 2: Find appmanifest using libraryfolders.vdf ---
+$libraryVdfPath = Join-Path $steamPath "config\libraryfolders.vdf"
 if (-not (Test-Path $libraryVdfPath)) {
-    Write-Host "libraryfolders.vdf not found!"
+    Write-Host "libraryfolders.vdf not found at $libraryVdfPath!"
     exit
 }
 
-# Parse libraryfolders.vdf to get all library paths
-$libraryFolders = @($steamPath) # always include main steam path
+# Parse libraryfolders.vdf to get all Steam library paths
+$libraryFolders = @($steamPath)  # always include main Steam path
 $vdfLines = Get-Content $libraryVdfPath
 foreach ($line in $vdfLines) {
     if ($line -match '^\s*"\d+"\s*"\s*(.+?)\s*"$') {
@@ -39,7 +38,7 @@ foreach ($line in $vdfLines) {
     }
 }
 
-# Search for the appmanifest in all library folders
+# Search for appmanifest in all library folders
 $appManifest = $null
 foreach ($folder in $libraryFolders) {
     $acf = Get-ChildItem -Path (Join-Path $folder "steamapps") -Filter "appmanifest_$AppID.acf" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
