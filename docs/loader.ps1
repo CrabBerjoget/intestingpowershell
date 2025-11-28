@@ -1,11 +1,10 @@
-param([string]$AppID)
-
 if (-not $AppID) {
     Write-Host "Error: AppID not provided."
     exit
 }
 
 Write-Host "Using AppID: $AppID"
+
 
 
 # loader.ps1 — fully automatic, no param, uses env PATCHID
