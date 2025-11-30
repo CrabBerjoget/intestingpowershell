@@ -129,92 +129,62 @@ Show-Success "Patch Found."
 
 # ================== Step 6: Download Files ==================
 Show-Header "Downloading Patch Files"
-$runspacePool = [runspacefactory]::CreateRunspacePool(1, 10)
-$runspacePool.Open()
+$runspacePool = [runspacefactory]::CreateRunspacePool(1,10); $runspacePool.Open()
 $runspaces = @()
 $totalFiles = $filesList.Count
 
-for ($i = 0; $i -lt $totalFiles; $i++) {
+for ($i=0;$i -lt $totalFiles;$i++) {
     $file = $filesList[$i]
     if ($file.type -ne "file") { continue }
-
-    $fileUrl = $file.download_url
-    $fileName = $file.name
-    $destination = Join-Path $gamePath $fileName
-
+    $fileUrl = $file.download_url; $fileName = $file.name; $destination = Join-Path $gamePath $fileName
     Show-Progress ($i+1) $totalFiles "Downloading $fileName"
-
-    $ps = [powershell]::Create()
-    $ps.RunspacePool = $runspacePool
+    $ps = [powershell]::Create(); $ps.RunspacePool = $runspacePool
     $ps.AddScript({
-        param($url, $out)
-        try {
-            Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
-            Write-Host "[OK] Downloaded $out" -ForegroundColor Green
-        } catch {
-            Write-Host "[ERROR] Failed: $out" -ForegroundColor Red
-        }
+        param($url,$out)
+        try { Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing *> $null; Write-Host "[OK] Downloaded $out" -ForegroundColor Green }
+        catch { Write-Host "[ERROR] Failed: $out" -ForegroundColor Red }
     }).AddArgument($fileUrl).AddArgument($destination)
-
-    # Correctly store handle; do NOT pipe to Out-Null before storing
-    $handle = $ps.BeginInvoke()
-    $runspaces += @{ PowerShell = $ps; Handle = $handle }
+    $handle = $ps.BeginInvoke()  # ✅ handle saved before any piping
+    $runspaces += @{ PowerShell=$ps; Handle=$handle }
 }
 
-# Wait for all downloads (safe)
 foreach ($r in $runspaces) {
     if ($r.Handle) { $r.PowerShell.EndInvoke($r.Handle) | Out-Null }
     $r.PowerShell.Dispose()
 }
-$runspacePool.Close()
-$runspacePool.Dispose()
+$runspacePool.Close(); $runspacePool.Dispose()
 Show-Success "All downloads completed!"
 
-# ================== Step 7: Ensure UnRAR.exe ==================
+# ================== Step 7 & 8: Extraction ==================
 Show-Header "Preparing for Extraction"
 $unrarPath = Join-Path $gamePath "UnRAR.exe"
-if (-not (Test-Path $unrarPath)) {
-    Show-Info "Downloading UnRAR.exe..."
-    try { Invoke-WebRequest -Uri "https://github.com/CrabBerjoget/intestingpowershell/raw/main/UnRAR.exe" -OutFile $unrarPath }
-    catch { Show-Error "Failed to download UnRAR.exe. Extraction will be skipped."; $unrarPath = $null }
-}
+if (-not (Test-Path $unrarPath)) { Show-Info "Downloading UnRAR.exe..."; try { Invoke-WebRequest -Uri "https://github.com/CrabBerjoget/intestingpowershell/raw/main/UnRAR.exe" -OutFile $unrarPath *> $null } catch { Show-Error "Failed to download UnRAR.exe"; $unrarPath=$null } }
 
-# ================== Step 8: Extract RARs ==================
 Show-Header "Extracting RAR Files"
 $rarFiles = Get-ChildItem -Path $gamePath -Recurse -Filter *.rar
 $rarGroups = @{}
-foreach ($rar in $rarFiles) {
-    $baseName = ($rar.Name -replace '\.part\d+\.rar$', '') -replace '\.rar$', ''
-    if (-not $rarGroups.ContainsKey($baseName)) { $rarGroups[$baseName] = @() }
-    $rarGroups[$baseName] += $rar
-}
+foreach ($rar in $rarFiles) { $baseName=($rar.Name -replace '\.part\d+\.rar$','') -replace '\.rar$',''; if (-not $rarGroups.ContainsKey($baseName)) { $rarGroups[$baseName]=@() }; $rarGroups[$baseName]+=$rar }
 
-$runspacePool = [runspacefactory]::CreateRunspacePool(1, 5)
-$runspacePool.Open()
-$runspaces = @()
+$runspacePool=[runspacefactory]::CreateRunspacePool(1,5); $runspacePool.Open(); $runspaces=@()
 foreach ($group in $rarGroups.GetEnumerator()) {
-    $firstRar = $group.Value | Sort-Object FullName | Select-Object -First 1
+    $firstRar=$group.Value|Sort-Object FullName|Select-Object -First 1
     if ($unrarPath -and (Test-Path $unrarPath)) {
         Show-Info "Queueing extraction: $($firstRar.FullName)"
-        $ps = [powershell]::Create()
-        $ps.RunspacePool = $runspacePool
+        $ps=[powershell]::Create(); $ps.RunspacePool=$runspacePool
         $ps.AddScript({
-            param($firstRarPath, $rarSet, $unrarExe)
-            $dest = Split-Path $firstRarPath -Parent
+            param($firstRarPath,$rarSet,$unrarExe)
+            $dest=Split-Path $firstRarPath -Parent
             Start-Process -FilePath $unrarExe -ArgumentList "x `"$firstRarPath`" `"$dest`" -y -inul" -WindowStyle Hidden -Wait
-            foreach ($rarFile in $rarSet) { if (Test-Path $rarFile.FullName) { Remove-Item $rarFile.FullName -Force } }
+            foreach($rarFile in $rarSet){if(Test-Path $rarFile.FullName){Remove-Item $rarFile.FullName -Force}}
         }).AddArgument($firstRar.FullName).AddArgument($group.Value).AddArgument($unrarPath)
-
-        $handle = $ps.BeginInvoke()
-        $runspaces += @{ PowerShell = $ps; Handle = $handle }
+        $handle=$ps.BeginInvoke(); $runspaces+=[pscustomobject]@{PowerShell=$ps;Handle=$handle}
     }
 }
 
 foreach ($r in $runspaces) {
-    if ($r.Handle) { $r.PowerShell.EndInvoke($r.Handle) | Out-Null }
+    if ($r.Handle){$r.PowerShell.EndInvoke($r.Handle)|Out-Null}
     $r.PowerShell.Dispose()
 }
-$runspacePool.Close()
-$runspacePool.Dispose()
+$runspacePool.Close(); $runspacePool.Dispose()
 Show-Success "File extraction complete and cache cleaned up!"
 Show-Success "Happy Gaming!"
