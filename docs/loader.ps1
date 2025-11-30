@@ -128,9 +128,12 @@ if (-not $filesList) {
 Write-Host "Patch Found."
 
 
-# --- Step 6: Multi-threaded Download ---
+# --- Step 6: Multi-thread Download (Runspaces) ---
 
-$downloadJobs = @()
+$runspacePool = [runspacefactory]::CreateRunspacePool(1, 10)  # min 1, max 10 threads
+$runspacePool.Open()
+
+$runspaces = @()
 
 foreach ($file in $filesList) {
     if ($file.type -eq "file") {
@@ -140,24 +143,32 @@ foreach ($file in $filesList) {
 
         Write-Host "Queueing download: $fileName"
 
-        $job = Start-Job -ScriptBlock {
-            param($fileUrl, $destination)
-            try {
-                Invoke-WebRequest $fileUrl -OutFile $destination -UseBasicParsing
-            } catch {
-                Write-Output "Failed to download $destination"
-            }
-        } -ArgumentList $fileUrl, $destination
+        $ps = [powershell]::Create()
+        $ps.RunspacePool = $runspacePool
 
-        $downloadJobs += $job
+        $ps.AddScript({
+            param($url, $out)
+            try {
+                Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
+            } catch {
+                Write-Host "Failed: $out"
+            }
+        }).AddArgument($fileUrl).AddArgument($destination)
+
+        $handle = $ps.BeginInvoke()
+        $runspaces += @{ PowerShell = $ps; Handle = $handle }
     }
 }
 
-Write-Host "Waiting for all downloads to finish..."
-Wait-Job -Job $downloadJobs | Out-Null
-Receive-Job -Job $downloadJobs | Out-Null
-Write-Host "All downloads completed!"
+# Wait for all downloads to complete
+foreach ($r in $runspaces) {
+    $r.PowerShell.EndInvoke($r.Handle)
+    $r.PowerShell.Dispose()
+}
 
+$runspacePool.Close()
+$runspacePool.Dispose()
+Write-Host "All downloads completed!"
 
 
 # --- Step 7: Ensure UnRAR.exe is downloaded ---
@@ -172,38 +183,45 @@ if (-not (Test-Path $unrarPath)) {
     }
 }
 
-# --- Step 8: Multi-thread RAR Extraction (SAFE) ---
+# --- Step 8: Multi-thread RAR Extraction (Runspaces) ---
 
 $rarFiles = Get-ChildItem -Path $gamePath -Recurse -Filter *.rar
-$extractJobs = @()
+$runspacePool = [runspacefactory]::CreateRunspacePool(1, 5)  # limit threads for extraction
+$runspacePool.Open()
+$runspaces = @()
 
 foreach ($rar in $rarFiles) {
-
     if ($unrarPath -and (Test-Path $unrarPath)) {
 
-        Write-Host "Queueing extract: $($rar.FullName)"
+        Write-Host "Queueing extraction: $($rar.FullName)"
 
-        $job = Start-Job -ArgumentList $rar.FullName, $unrarPath -ScriptBlock {
+        $ps = [powershell]::Create()
+        $ps.RunspacePool = $runspacePool
+
+        $ps.AddScript({
             param($rarPath, $unrarExe)
-
             $dest = Split-Path $rarPath -Parent
-
             Start-Process -FilePath $unrarExe `
                 -ArgumentList "x `"$rarPath`" `"$dest`" -y -inul" `
                 -WindowStyle Hidden -Wait
-
             Remove-Item $rarPath -Force
-        }
+        }).AddArgument($rar.FullName).AddArgument($unrarPath)
 
-        $extractJobs += $job
+        $handle = $ps.BeginInvoke()
+        $runspaces += @{ PowerShell = $ps; Handle = $handle }
     }
 }
 
-Write-Host "Waiting for extraction..."
-Wait-Job $extractJobs | Out-Null
-Receive-Job $extractJobs | Out-Null
+# Wait for all extractions to complete
+foreach ($r in $runspaces) {
+    $r.PowerShell.EndInvoke($r.Handle)
+    $r.PowerShell.Dispose()
+}
 
+$runspacePool.Close()
+$runspacePool.Dispose()
 Write-Host "RAR extraction complete!"
+
 
 
 
