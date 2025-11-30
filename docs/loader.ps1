@@ -172,7 +172,7 @@ if (-not (Test-Path $unrarPath)) {
     }
 }
 
-# --- Step 8: Multi-threaded RAR Extraction ---
+# --- Step 8: Multi-thread RAR Extraction (SAFE) ---
 
 $rarFiles = Get-ChildItem -Path $gamePath -Recurse -Filter *.rar
 $extractJobs = @()
@@ -183,26 +183,25 @@ foreach ($rar in $rarFiles) {
 
         Write-Host "Queueing extract: $($rar.FullName)"
 
-        $job = Start-Job -ScriptBlock {
-            param($rarPath, $unrar)
+        $job = Start-Job -ArgumentList $rar.FullName, $unrarPath -ScriptBlock {
+            param($rarPath, $unrarExe)
 
-            $destination = Split-Path $rarPath -Parent
-            & $unrar x "`"$rarPath`"" "`"$destination`"" -y -inul | Out-Null
+            $dest = Split-Path $rarPath -Parent
+
+            Start-Process -FilePath $unrarExe `
+                -ArgumentList "x `"$rarPath`" `"$dest`" -y -inul" `
+                -WindowStyle Hidden -Wait
 
             Remove-Item $rarPath -Force
-
-        } -ArgumentList $rar.FullName, $unrarPath
+        }
 
         $extractJobs += $job
-
-    } else {
-        Write-Host "UnRAR.exe not found. Skipping $($rar.Name)"
     }
 }
 
-Write-Host "Waiting for all extractions to finish..."
-Wait-Job -Job $extractJobs | Out-Null
-Receive-Job -Job $extractJobs | Out-Null
+Write-Host "Waiting for extraction..."
+Wait-Job $extractJobs | Out-Null
+Receive-Job $extractJobs | Out-Null
 
 Write-Host "RAR extraction complete!"
 
