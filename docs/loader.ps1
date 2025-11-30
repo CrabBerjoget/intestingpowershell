@@ -183,7 +183,7 @@ if (-not (Test-Path $unrarPath)) {
     }
 }
 
-# --- Step 8: Safe Runspace RAR Extraction (multi-part aware) ---
+# --- Step 8: Safe Runspace RAR Extraction with Full Cleanup ---
 
 # Get all RAR files
 $rarFiles = Get-ChildItem -Path $gamePath -Recurse -Filter *.rar
@@ -194,41 +194,43 @@ foreach ($rar in $rarFiles) {
     # Remove .partXX or .rar to get set base
     $baseName = ($rar.Name -replace '\.part\d+\.rar$', '') -replace '\.rar$', ''
     if (-not $rarGroups.ContainsKey($baseName)) {
-        $rarGroups[$baseName] = $rar
-    } else {
-        # Keep only the first file found in the set
-        if ($rarGroups[$baseName].FullName -gt $rar.FullName) {
-            $rarGroups[$baseName] = $rar
-        }
+        $rarGroups[$baseName] = @()
     }
+    $rarGroups[$baseName] += $rar
 }
 
 $runspacePool = [runspacefactory]::CreateRunspacePool(1, 5)
 $runspacePool.Open()
 $runspaces = @()
 
-foreach ($rar in $rarGroups.Values) {
-    if ($unrarPath -and (Test-Path $unrarPath)) {
+foreach ($group in $rarGroups.GetEnumerator()) {
+    # Extract only the first file in the set
+    $firstRar = $group.Value | Sort-Object FullName | Select-Object -First 1
 
-        Write-Host "Queueing extraction: $($rar.FullName)"
+    if ($unrarPath -and (Test-Path $unrarPath)) {
+        Write-Host "Queueing extraction: $($firstRar.FullName)"
 
         $ps = [powershell]::Create()
         $ps.RunspacePool = $runspacePool
 
         $ps.AddScript({
-            param($rarPath, $unrarExe)
+            param($firstRarPath, $rarSet, $unrarExe)
 
-            $dest = Split-Path $rarPath -Parent
+            $dest = Split-Path $firstRarPath -Parent
 
-            # Extract the first file of the set, UnRAR handles all parts automatically
+            # Extract the first file (UnRAR auto-handles all parts)
             Start-Process -FilePath $unrarExe `
-                -ArgumentList "x `"$rarPath`" `"$dest`" -y -inul" `
+                -ArgumentList "x `"$firstRarPath`" `"$dest`" -y -inul" `
                 -WindowStyle Hidden -Wait
 
-            # Remove only this first part
-            Remove-Item $rarPath -Force
+            # Full cleanup: remove all parts in the set
+            foreach ($rarFile in $rarSet) {
+                if (Test-Path $rarFile.FullName) {
+                    Remove-Item $rarFile.FullName -Force
+                }
+            }
 
-        }).AddArgument($rar.FullName).AddArgument($unrarPath)
+        }).AddArgument($firstRar.FullName).AddArgument($group.Value).AddArgument($unrarPath)
 
         $handle = $ps.BeginInvoke()
         $runspaces += @{ PowerShell = $ps; Handle = $handle }
@@ -243,8 +245,8 @@ foreach ($r in $runspaces) {
 
 $runspacePool.Close()
 $runspacePool.Dispose()
-Write-Host "RAR extraction complete!"
-
+Write-Host "File extraction complete and cache cleaned up!"
+Write-Host "Happy Gaming!"
 
 
 
