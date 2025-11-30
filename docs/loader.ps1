@@ -19,52 +19,55 @@ if (-not $steamPath) {
     exit
 }
 
-# --- Step 2: Find appmanifest using libraryfolders.vdf ---
-$libraryVdfPath = Join-Path $steamPath "config\libraryfolders.vdf"
-if (-not (Test-Path $libraryVdfPath)) {
-    Write-Host "libraryfolders.vdf not found at $libraryVdfPath!"
-    exit
-}
+# --- Step 2: Find appmanifest by scanning drives instead of parsing VDF ---
 
-# Always include main Steam path
-$libraryFolders = @($steamPath)
+Write-Host "Scanning drives A-Z for Steam libraries..."
 
-# Read full VDF
-$vdfContent = Get-Content -Raw $libraryVdfPath
+$libraryFolders = @()
 
-# --- NEW FORMAT SUPPORT ---
-# Matches:
-# "0" { "path" "D:\\Steam" ... }
-$pathMatches = [regex]::Matches($vdfContent, '"path"\s*"([^"]+)"')
-foreach ($match in $pathMatches) {
-    $folder = $match.Groups[1].Value
-    if (Test-Path $folder) {
-        $libraryFolders += $folder
+# Add main Steam path from registry
+$libraryFolders += $steamPath
+
+# Scan all drives for SteamLibrary folders
+foreach ($letter in 'A'..'Z') {
+    $drive = "$letter:\"
+    if (Test-Path $drive) {
+
+        # Typical Steam library folder
+        $lib1 = Join-Path $drive "SteamLibrary"
+        $lib2 = Join-Path $drive "steamLibrary"
+        $lib3 = Join-Path $drive "STEAMLIBRARY"
+
+        foreach ($lib in @($lib1, $lib2, $lib3)) {
+            if (Test-Path $lib) {
+                $libraryFolders += $lib
+            }
+        }
+
+        # Some users install Steam directly on a different drive (D:\Steam)
+        $steamLike = Join-Path $drive "Steam"
+        if (Test-Path $steamLike) {
+            $libraryFolders += $steamLike
+        }
     }
 }
 
-# --- OLD FORMAT SUPPORT ---
-# Matches:
-# "0"  "D:\\Steam"
-$oldMatches = [regex]::Matches($vdfContent, '"\d+"\s*"([^"]+)"')
-foreach ($match in $oldMatches) {
-    $folder = $match.Groups[1].Value
-    if (Test-Path $folder -and -not ($libraryFolders -contains $folder)) {
-        $libraryFolders += $folder
-    }
-}
+# Remove duplicates
+$libraryFolders = $libraryFolders | Select-Object -Unique
 
 Write-Host "Detected Steam Libraries:"
 $libraryFolders | ForEach-Object { Write-Host " - $_" }
 
-# Search for appmanifest in all library folders
+# Search for appmanifest in detected library folders
 $appManifest = $null
 foreach ($folder in $libraryFolders) {
     $steamApps = Join-Path $folder "steamapps"
-    $acf = Get-ChildItem -Path $steamApps -Filter "appmanifest_$AppID.acf" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($acf) {
-        $appManifest = $acf
-        break
+    if (Test-Path $steamApps) {
+        $acf = Get-ChildItem -Path $steamApps -Filter "appmanifest_$AppID.acf" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($acf) {
+            $appManifest = $acf
+            break
+        }
     }
 }
 
@@ -72,6 +75,7 @@ if (-not $appManifest) {
     Write-Host "AppID $AppID not found in any Steam library folder!"
     exit
 }
+
 
 # --- Step 3: Parse installdir from appmanifest ---
 $acfContent = Get-Content $appManifest.FullName
