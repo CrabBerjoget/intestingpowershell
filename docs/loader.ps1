@@ -19,46 +19,59 @@ if (-not $steamPath) {
     exit
 }
 
-# --- Step 2 (recommended): Find appmanifest by scanning mounted drives only ---
+# --- Step 2: Find appmanifest ---
 
-Write-Host "Scanning mounted drives for Steam libraries..."
+Write-Host "Checking main Steam steamapps folder first..."
 
 $libraryFolders = @()
+
+# Add Steam root folder (from registry)
 $libraryFolders += $steamPath
 
-# Get only filesystem drives that exist
-$drives = Get-PSDrive -PSProvider FileSystem | Select-Object -ExpandProperty Root
+# Check main steamapps first
+$mainSteamApps = Join-Path $steamPath "steamapps"
+$acf = Get-ChildItem -Path $mainSteamApps -Filter "appmanifest_$AppID.acf" -ErrorAction SilentlyContinue | Select-Object -First 1
 
-foreach ($drive in $drives) {
-    # $drive already looks like "C:\"
-    $candidates = @(
-        Join-Path $drive "SteamLibrary",
-        Join-Path $drive "steamLibrary",
-        Join-Path $drive "STEAMLIBRARY",
-        Join-Path $drive "Steam"
-    )
+if ($acf) {
+    $appManifest = $acf
+} else {
 
-    foreach ($lib in $candidates) {
-        if (Test-Path $lib) {
-            $libraryFolders += $lib
-        }
-    }
-}
+    Write-Host "Not in main Steam folder. Scanning mounted drives for SteamLibrary..."
 
-$libraryFolders = $libraryFolders | Where-Object { $_ } | Select-Object -Unique
+    # Get mounted drives EXCEPT Windows reserved ones
+    $drives = Get-PSDrive -PSProvider FileSystem | Select-Object -ExpandProperty Root
 
-Write-Host "Detected Steam Libraries:"
-$libraryFolders | ForEach-Object { Write-Host " - $_" }
+    foreach ($drive in $drives) {
+        try {
+            if (-not (Test-Path $drive)) { continue }
 
-$appManifest = $null
-foreach ($folder in $libraryFolders) {
-    $steamApps = Join-Path $folder "steamapps"
-    if (Test-Path $steamApps) {
-        $acf = Get-ChildItem -Path $steamApps -Filter "appmanifest_$AppID.acf" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($acf) {
-            $appManifest = $acf
-            break
-        }
+            # Possible library folders
+            $candidates = @(
+                (Join-Path $drive "SteamLibrary"),
+                (Join-Path $drive "Steam"),
+                (Join-Path $drive "steamlibrary"),
+                (Join-Path $drive "steam"),
+                (Join-Path $drive "STEAMLIBRARY"),
+                (Join-Path $drive "STEAM")
+            )
+
+            foreach ($lib in $candidates) {
+                $steamApps = Join-Path $lib "steamapps"
+
+                if (Test-Path $steamApps) {
+                    $libraryFolders += $lib
+
+                    $acf = Get-ChildItem -Path $steamApps -Filter "appmanifest_$AppID.acf" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+                    if ($acf) {
+                        $appManifest = $acf
+                        break
+                    }
+                }
+            }
+
+            if ($appManifest) { break }
+
+        } catch {}
     }
 }
 
@@ -67,7 +80,7 @@ if (-not $appManifest) {
     exit
 }
 
-
+Write-Host "Found manifest: $($appManifest.FullName)"
 
 # --- Step 3: Parse installdir from appmanifest ---
 $acfContent = Get-Content $appManifest.FullName
