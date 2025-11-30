@@ -128,22 +128,44 @@ if (-not $filesList) {
 Write-Host "Patch Found."
 
 
-# --- Step 6: Download all files ---
+# --- Step 6: Download all files (MULTI-THREADED) ---
+
+$jobs = @()
+
 foreach ($file in $filesList) {
     if ($file.type -eq "file") {
-        $fileUrl = $file.download_url
+
+        $fileUrl  = $file.download_url
         $fileName = $file.name
-        $destination = Join-Path $gamePath $fileName
-        Write-Host "Downloading $fileName → $destination"
-        try {
-            Invoke-WebRequest $fileUrl -OutFile $destination
-        } catch {
-            Write-Host "Failed to download $fileName"
-        }
+        $dest     = Join-Path $gamePath $fileName
+
+        Write-Host "Queued: $fileName"
+
+        # Start a background job for each file
+        $jobs += Start-Job -ScriptBlock {
+            param($url, $out)
+
+            try {
+                Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
+            } catch {
+                Write-Host "Failed to download $($out)"
+            }
+
+        } -ArgumentList $fileUrl, $dest
     }
 }
 
-Write-Host "Patch complete!"
+Write-Host "Downloading all files in parallel..."
+
+# Wait for all jobs to finish
+Wait-Job -Job $jobs | Out-Null
+
+# Retrieve results (also clears finished jobs)
+Receive-Job -Job $jobs | Out-Null
+Remove-Job -Job $jobs | Out-Null
+
+Write-Host "All downloads complete!"
+
 
 # --- Step 7: Ensure UnRAR.exe is downloaded ---
 $unrarPath = Join-Path $gamePath "UnRAR.exe"
