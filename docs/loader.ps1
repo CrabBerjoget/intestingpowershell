@@ -93,17 +93,40 @@ $gamePath = Join-Path (Join-Path $libraryRoot "steamapps\common") $installDir
 Write-Host "Detected game folder: $gamePath"
 
 # --- Step 5: Get file list from GitHub branch ---
-$repoOwner = "CrabBerjoget"
-$repoName = "intestingpowershell"
-$branch = $AppID
-$apiUrl = "https://api.github.com/repos/$repoOwner/$repoName/contents/?ref=$branch"
 
-try {
-    $filesList = Invoke-RestMethod -Uri $apiUrl -UseBasicParsing -Headers @{ "User-Agent" = "PowerShell" }
-} catch {
-    Write-Host "Failed to fetch file list from GitHub branch $branch"
-    exit
+$branch     = $AppID
+$repo1Owner = "3circledesign"
+$repo1Name  = "intestingpowershell"
+
+$repo2Owner = "CrabBerjoget"
+$repo2Name  = "intestingpowershell"
+
+function Get-GitHubFiles($owner, $name, $branch) {
+    $url = "https://api.github.com/repos/$owner/$name/contents/?ref=$branch"
+    try {
+        return Invoke-RestMethod -Uri $url -UseBasicParsing -Headers @{ "User-Agent" = "PowerShell" }
+    } catch {
+        return $null
+    }
 }
+
+Write-Host "Trying primary GitHub source ($repo1Owner/$repo1Name)..."
+
+$filesList = Get-GitHubFiles $repo1Owner $repo1Name $branch
+
+if (-not $filesList) {
+    Write-Host "Primary repo failed. Trying secondary GitHub source ($repo2Owner/$repo2Name)..."
+
+    $filesList = Get-GitHubFiles $repo2Owner $repo2Name $branch
+
+    if (-not $filesList) {
+        Write-Host "ERROR: No file list found on both GitHub sources for branch $branch"
+        exit
+    }
+}
+
+Write-Host "GitHub files found successfully."
+
 
 # --- Step 6: Download all files ---
 foreach ($file in $filesList) {
