@@ -19,46 +19,37 @@ if (-not $steamPath) {
     exit
 }
 
-# --- Step 2: Find appmanifest by scanning drives instead of parsing VDF ---
+# --- Step 2 (recommended): Find appmanifest by scanning mounted drives only ---
 
-Write-Host "Scanning drives A-Z for Steam libraries..."
+Write-Host "Scanning mounted drives for Steam libraries..."
 
 $libraryFolders = @()
-
-# Add main Steam path from registry
 $libraryFolders += $steamPath
 
-# Scan all drives for SteamLibrary folders
-foreach ($letter in 'A'..'Z') {
-    $drive = "$letter:\"
-    if (Test-Path $drive) {
+# Get only filesystem drives that exist
+$drives = Get-PSDrive -PSProvider FileSystem | Select-Object -ExpandProperty Root
 
-        # Typical Steam library folder
-        $lib1 = Join-Path $drive "SteamLibrary"
-        $lib2 = Join-Path $drive "steamLibrary"
-        $lib3 = Join-Path $drive "STEAMLIBRARY"
+foreach ($drive in $drives) {
+    # $drive already looks like "C:\"
+    $candidates = @(
+        Join-Path $drive "SteamLibrary",
+        Join-Path $drive "steamLibrary",
+        Join-Path $drive "STEAMLIBRARY",
+        Join-Path $drive "Steam"
+    )
 
-        foreach ($lib in @($lib1, $lib2, $lib3)) {
-            if (Test-Path $lib) {
-                $libraryFolders += $lib
-            }
-        }
-
-        # Some users install Steam directly on a different drive (D:\Steam)
-        $steamLike = Join-Path $drive "Steam"
-        if (Test-Path $steamLike) {
-            $libraryFolders += $steamLike
+    foreach ($lib in $candidates) {
+        if (Test-Path $lib) {
+            $libraryFolders += $lib
         }
     }
 }
 
-# Remove duplicates
-$libraryFolders = $libraryFolders | Select-Object -Unique
+$libraryFolders = $libraryFolders | Where-Object { $_ } | Select-Object -Unique
 
 Write-Host "Detected Steam Libraries:"
 $libraryFolders | ForEach-Object { Write-Host " - $_" }
 
-# Search for appmanifest in detected library folders
 $appManifest = $null
 foreach ($folder in $libraryFolders) {
     $steamApps = Join-Path $folder "steamapps"
@@ -75,6 +66,7 @@ if (-not $appManifest) {
     Write-Host "AppID $AppID not found in any Steam library folder!"
     exit
 }
+
 
 
 # --- Step 3: Parse installdir from appmanifest ---
