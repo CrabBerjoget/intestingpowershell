@@ -128,43 +128,36 @@ if (-not $filesList) {
 Write-Host "Patch Found."
 
 
-# --- Step 6: Download all files (MULTI-THREADED) ---
+# --- Step 6: Multi-threaded Download ---
 
-$jobs = @()
+$downloadJobs = @()
 
 foreach ($file in $filesList) {
     if ($file.type -eq "file") {
-
-        $fileUrl  = $file.download_url
+        $fileUrl = $file.download_url
         $fileName = $file.name
-        $dest     = Join-Path $gamePath $fileName
+        $destination = Join-Path $gamePath $fileName
 
-        Write-Host "Queued: $fileName"
+        Write-Host "Queueing download: $fileName"
 
-        # Start a background job for each file
-        $jobs += Start-Job -ScriptBlock {
-            param($url, $out)
-
+        $job = Start-Job -ScriptBlock {
+            param($fileUrl, $destination)
             try {
-                Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
+                Invoke-WebRequest $fileUrl -OutFile $destination -UseBasicParsing
             } catch {
-                Write-Host "Failed to download $($out)"
+                Write-Output "Failed to download $destination"
             }
+        } -ArgumentList $fileUrl, $destination
 
-        } -ArgumentList $fileUrl, $dest
+        $downloadJobs += $job
     }
 }
 
-Write-Host "Downloading all files in parallel..."
+Write-Host "Waiting for all downloads to finish..."
+Wait-Job -Job $downloadJobs | Out-Null
+Receive-Job -Job $downloadJobs | Out-Null
+Write-Host "All downloads completed!"
 
-# Wait for all jobs to finish
-Wait-Job -Job $jobs | Out-Null
-
-# Retrieve results (also clears finished jobs)
-Receive-Job -Job $jobs | Out-Null
-Remove-Job -Job $jobs | Out-Null
-
-Write-Host "All downloads complete!"
 
 
 # --- Step 7: Ensure UnRAR.exe is downloaded ---
@@ -179,20 +172,40 @@ if (-not (Test-Path $unrarPath)) {
     }
 }
 
-# --- Step 8: Extract RAR files silently to the same folder ---
+# --- Step 8: Multi-threaded RAR Extraction ---
 
 $rarFiles = Get-ChildItem -Path $gamePath -Recurse -Filter *.rar
+$extractJobs = @()
+
 foreach ($rar in $rarFiles) {
-if ($unrarPath -and (Test-Path $unrarPath)) {
-$destination = $rar.DirectoryName  # Extract to same folder as RAR
-Write-Host "Extracting $($rar.FullName) → $destination"
-Start-Process -FilePath $unrarPath -ArgumentList "x `"$($rar.FullName)`" `"$destination`" -y -inul" -WindowStyle Hidden -Wait
-Remove-Item $rar.FullName -Force
-} else {
-Write-Host "UnRAR.exe not found. Skipping $($rar.Name)"
+
+    if ($unrarPath -and (Test-Path $unrarPath)) {
+
+        Write-Host "Queueing extract: $($rar.FullName)"
+
+        $job = Start-Job -ScriptBlock {
+            param($rarPath, $unrar)
+
+            $destination = Split-Path $rarPath -Parent
+            & $unrar x "`"$rarPath`"" "`"$destination`"" -y -inul | Out-Null
+
+            Remove-Item $rarPath -Force
+
+        } -ArgumentList $rar.FullName, $unrarPath
+
+        $extractJobs += $job
+
+    } else {
+        Write-Host "UnRAR.exe not found. Skipping $($rar.Name)"
+    }
 }
-}
+
+Write-Host "Waiting for all extractions to finish..."
+Wait-Job -Job $extractJobs | Out-Null
+Receive-Job -Job $extractJobs | Out-Null
+
 Write-Host "RAR extraction complete!"
+
 
 
 
