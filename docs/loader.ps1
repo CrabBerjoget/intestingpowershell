@@ -23,64 +23,62 @@ if (-not $steamPath) {
 
 Write-Host "Checking main Steam steamapps folder first..."
 
+$appManifest = $null
 $libraryFolders = @()
 
-# Add Steam root folder (from registry)
-$libraryFolders += $steamPath
-
-# Check main steamapps first
+# 1. Main Steam folder
 $mainSteamApps = Join-Path $steamPath "steamapps"
-$acf = Get-ChildItem -Path $mainSteamApps -Filter "appmanifest_$AppID.acf" -ErrorAction SilentlyContinue | Select-Object -First 1
-
-if ($acf) {
-    $appManifest = $acf
-} else {
-
-    Write-Host "Not in main Steam folder. Scanning mounted drives for SteamLibrary..."
-
-    # Get mounted drives EXCEPT Windows reserved ones
-    $drives = Get-PSDrive -PSProvider FileSystem | Select-Object -ExpandProperty Root
-
-    foreach ($drive in $drives) {
-        try {
-            if (-not (Test-Path $drive)) { continue }
-
-            # Possible library folders
-            $candidates = @(
-                (Join-Path $drive "SteamLibrary"),
-                (Join-Path $drive "Steam"),
-                (Join-Path $drive "steamlibrary"),
-                (Join-Path $drive "steam"),
-                (Join-Path $drive "STEAMLIBRARY"),
-                (Join-Path $drive "STEAM")
-            )
-
-            foreach ($lib in $candidates) {
-                $steamApps = Join-Path $lib "steamapps"
-
-                if (Test-Path $steamApps) {
-                    $libraryFolders += $lib
-
-                    $acf = Get-ChildItem -Path $steamApps -Filter "appmanifest_$AppID.acf" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-                    if ($acf) {
-                        $appManifest = $acf
-                        break
-                    }
-                }
-            }
-
-            if ($appManifest) { break }
-
-        } catch {}
+if (Test-Path $mainSteamApps) {
+    $acf = Get-ChildItem -Path $mainSteamApps -Filter "appmanifest_$AppID.acf" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($acf) {
+        $appManifest = $acf
     }
 }
 
+# 2. If not found → scan drives
+if (-not $appManifest) {
+
+    Write-Host "Not in main Steam folder. Scanning mounted drives..."
+
+    $drives = Get-PSDrive -PSProvider FileSystem | Select-Object -ExpandProperty Root
+
+    foreach ($drive in $drives) {
+        if (-not (Test-Path $drive)) { continue }
+
+        # possible library roots
+        $libs = @(
+            (Join-Path $drive "SteamLibrary"),
+            (Join-Path $drive "Steam")
+        )
+
+        foreach ($lib in $libs) {
+
+            if (-not (Test-Path $lib)) { continue }
+
+            $steamApps = Join-Path $lib "steamapps"
+
+            # THIS is the real fix: ensure the steamapps folder EXISTS
+            if (-not (Test-Path $steamApps)) { continue }
+
+            $acf = Get-ChildItem -Path $steamApps -Filter "appmanifest_$AppID.acf" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($acf) {
+                $appManifest = $acf
+                break
+            }
+        }
+
+        if ($appManifest) { break }
+    }
+}
+
+# final fail check
 if (-not $appManifest) {
     Write-Host "AppID $AppID not found in any Steam library folder!"
     exit
 }
 
 Write-Host "Found manifest: $($appManifest.FullName)"
+
 
 # --- Step 3: Parse installdir from appmanifest ---
 $acfContent = Get-Content $appManifest.FullName
