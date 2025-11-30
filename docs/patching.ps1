@@ -225,5 +225,4 @@ foreach ($r in $runspaces) {
 $runspacePool.Close()
 $runspacePool.Dispose()
 Show-Success "File extraction complete and cache cleaned up!"
-
 Show-Success "Happy Gaming!"
