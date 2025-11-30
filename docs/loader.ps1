@@ -79,8 +79,9 @@ $installDirLine = $acfContent | Where-Object { $_ -match '"installdir"' }
 $installDir = ($installDirLine -split '"')[3]
 
 # --- Step 4: Build REAL game path from the library the manifest was found in ---
-$gameLibraryPath = Split-Path $appManifest.DirectoryName -Parent  # This gets the library root (SteamLibrary)
-$gamePath = Join-Path (Join-Path $gameLibraryPath "common") $installDir
+# appManifest is like: <LibraryRoot>\steamapps\appmanifest_123456.acf
+$libraryRoot = Split-Path (Split-Path $appManifest.FullName -Parent) -Parent
+$gamePath = Join-Path (Join-Path $libraryRoot "common") $installDir
 
 Write-Host "Detected game folder: $gamePath"
 
