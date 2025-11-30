@@ -73,15 +73,15 @@ if (-not $appManifest) {
     exit
 }
 
-
-
-# --- Step 3: Parse installdir ---
+# --- Step 3: Parse installdir from appmanifest ---
 $acfContent = Get-Content $appManifest.FullName
 $installDirLine = $acfContent | Where-Object { $_ -match '"installdir"' }
 $installDir = ($installDirLine -split '"')[3]
 
-# --- Step 4: Build full path ---
-$gamePath = Join-Path (Join-Path $steamPath "steamapps\common") $installDir
+# --- Step 4: Build REAL game path from the library the manifest was found in ---
+$gameLibraryPath = Split-Path $appManifest.DirectoryName -Parent  # This gets the library root (SteamLibrary)
+$gamePath = Join-Path (Join-Path $gameLibraryPath "common") $installDir
+
 Write-Host "Detected game folder: $gamePath"
 
 # --- Step 5: Get file list from GitHub branch ---
