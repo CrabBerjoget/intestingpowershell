@@ -110,22 +110,22 @@ function Get-GitHubFiles($owner, $name, $branch) {
     }
 }
 
-Write-Host "Trying primary GitHub source ($repo1Owner/$repo1Name)..."
+Write-Host "Fetching source..."
 
 $filesList = Get-GitHubFiles $repo1Owner $repo1Name $branch
 
 if (-not $filesList) {
-    Write-Host "Primary repo failed. Trying secondary GitHub source ($repo2Owner/$repo2Name)..."
+    Write-Host "Refetching source..."
 
     $filesList = Get-GitHubFiles $repo2Owner $repo2Name $branch
 
     if (-not $filesList) {
-        Write-Host "ERROR: No file list found on both GitHub sources for branch $branch"
+        Write-Host "ERROR: No Patch for $branch yet!"
         exit
     }
 }
 
-Write-Host "GitHub files found successfully."
+Write-Host "Patch Found."
 
 
 # --- Step 6: Download all files ---
