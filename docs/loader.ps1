@@ -26,22 +26,42 @@ if (-not (Test-Path $libraryVdfPath)) {
     exit
 }
 
-# Parse libraryfolders.vdf to get all Steam library paths
-$libraryFolders = @($steamPath)  # always include main Steam path
-$vdfLines = Get-Content $libraryVdfPath
-foreach ($line in $vdfLines) {
-    if ($line -match '^\s*"\d+"\s*"\s*(.+?)\s*"$') {
-        $folder = $matches[1]
-        if (Test-Path $folder) {
-            $libraryFolders += $folder
-        }
+# Always include main Steam path
+$libraryFolders = @($steamPath)
+
+# Read full VDF
+$vdfContent = Get-Content -Raw $libraryVdfPath
+
+# --- NEW FORMAT SUPPORT ---
+# Matches:
+# "0" { "path" "D:\\Steam" ... }
+$pathMatches = [regex]::Matches($vdfContent, '"path"\s*"([^"]+)"')
+foreach ($match in $pathMatches) {
+    $folder = $match.Groups[1].Value
+    if (Test-Path $folder) {
+        $libraryFolders += $folder
     }
 }
+
+# --- OLD FORMAT SUPPORT ---
+# Matches:
+# "0"  "D:\\Steam"
+$oldMatches = [regex]::Matches($vdfContent, '"\d+"\s*"([^"]+)"')
+foreach ($match in $oldMatches) {
+    $folder = $match.Groups[1].Value
+    if (Test-Path $folder -and -not ($libraryFolders -contains $folder)) {
+        $libraryFolders += $folder
+    }
+}
+
+Write-Host "Detected Steam Libraries:"
+$libraryFolders | ForEach-Object { Write-Host " - $_" }
 
 # Search for appmanifest in all library folders
 $appManifest = $null
 foreach ($folder in $libraryFolders) {
-    $acf = Get-ChildItem -Path (Join-Path $folder "steamapps") -Filter "appmanifest_$AppID.acf" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    $steamApps = Join-Path $folder "steamapps"
+    $acf = Get-ChildItem -Path $steamApps -Filter "appmanifest_$AppID.acf" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($acf) {
         $appManifest = $acf
         break
@@ -52,6 +72,7 @@ if (-not $appManifest) {
     Write-Host "AppID $AppID not found in any Steam library folder!"
     exit
 }
+
 
 
 # --- Step 3: Parse installdir ---
