@@ -67,7 +67,7 @@ Show-Success "Steam path detected: $steamPath"
 
 # ================== Step 2: Find appmanifest ==================
 Show-Header "Locating App Manifest"
-Show-Info "Checking main Steam steamapps folder first..."
+Show-Info "Checking targetted folder..."
 $appManifest = $null
 $mainSteamApps = Join-Path $steamPath "steamapps"
 if (Test-Path $mainSteamApps) {
@@ -75,7 +75,7 @@ if (Test-Path $mainSteamApps) {
     if ($acf) { $appManifest = $acf }
 }
 if (-not $appManifest) {
-    Show-Info "Not in main Steam folder. Scanning other drives..."
+    Show-Info "Not in main Steam folder. Scanning mounted drives..."
     $drives = Get-PSDrive -PSProvider FileSystem | Select-Object -ExpandProperty Root
     foreach ($drive in $drives) {
         if (-not (Test-Path $drive)) { continue }
@@ -137,9 +137,11 @@ $totalFiles = $filesList.Count
 for ($i = 0; $i -lt $totalFiles; $i++) {
     $file = $filesList[$i]
     if ($file.type -ne "file") { continue }
+
     $fileUrl = $file.download_url
     $fileName = $file.name
     $destination = Join-Path $gamePath $fileName
+
     Show-Progress ($i+1) $totalFiles "Downloading $fileName"
 
     $ps = [powershell]::Create()
@@ -153,15 +155,15 @@ for ($i = 0; $i -lt $totalFiles; $i++) {
             Write-Host "[ERROR] Failed: $out" -ForegroundColor Red
         }
     }).AddArgument($fileUrl).AddArgument($destination)
-    
-    # Suppress BeginInvoke object output
-    $handle = $ps.BeginInvoke() | Out-Null
+
+    # Correctly store handle; do NOT pipe to Out-Null before storing
+    $handle = $ps.BeginInvoke()
     $runspaces += @{ PowerShell = $ps; Handle = $handle }
 }
 
-# Wait for all downloads (suppress output)
+# Wait for all downloads (safe)
 foreach ($r in $runspaces) {
-    $r.PowerShell.EndInvoke($r.Handle) | Out-Null
+    if ($r.Handle) { $r.PowerShell.EndInvoke($r.Handle) | Out-Null }
     $r.PowerShell.Dispose()
 }
 $runspacePool.Close()
@@ -202,13 +204,14 @@ foreach ($group in $rarGroups.GetEnumerator()) {
             Start-Process -FilePath $unrarExe -ArgumentList "x `"$firstRarPath`" `"$dest`" -y -inul" -WindowStyle Hidden -Wait
             foreach ($rarFile in $rarSet) { if (Test-Path $rarFile.FullName) { Remove-Item $rarFile.FullName -Force } }
         }).AddArgument($firstRar.FullName).AddArgument($group.Value).AddArgument($unrarPath)
-        $handle = $ps.BeginInvoke() | Out-Null
+
+        $handle = $ps.BeginInvoke()
         $runspaces += @{ PowerShell = $ps; Handle = $handle }
     }
 }
 
 foreach ($r in $runspaces) {
-    $r.PowerShell.EndInvoke($r.Handle) | Out-Null
+    if ($r.Handle) { $r.PowerShell.EndInvoke($r.Handle) | Out-Null }
     $r.PowerShell.Dispose()
 }
 $runspacePool.Close()
