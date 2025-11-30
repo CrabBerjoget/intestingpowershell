@@ -50,7 +50,7 @@ if (-not $AppID) {
     Show-Error "AppID not provided."
     exit
 }
-Show-Header "Steam Patch Loader"
+Show-Header "Onennabe Patcher"
 Show-Info "Using AppID: $AppID"
 
 # ================== Step 1: Detect Steam Path ==================
@@ -69,15 +69,13 @@ Show-Success "Steam path detected: $steamPath"
 Show-Header "Locating App Manifest"
 Show-Info "Checking main Steam steamapps folder first..."
 $appManifest = $null
-
 $mainSteamApps = Join-Path $steamPath "steamapps"
 if (Test-Path $mainSteamApps) {
     $acf = Get-ChildItem -Path $mainSteamApps -Filter "appmanifest_$AppID.acf" -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($acf) { $appManifest = $acf }
 }
-
 if (-not $appManifest) {
-    Show-Info "Not in main Steam folder. Scanning mounted drives..."
+    Show-Info "Not in main Steam folder. Scanning other drives..."
     $drives = Get-PSDrive -PSProvider FileSystem | Select-Object -ExpandProperty Root
     foreach ($drive in $drives) {
         if (-not (Test-Path $drive)) { continue }
@@ -92,7 +90,6 @@ if (-not $appManifest) {
         if ($appManifest) { break }
     }
 }
-
 if (-not $appManifest) {
     Show-Error "AppID $AppID not found in any Steam library folder!"
     exit
@@ -103,7 +100,6 @@ Show-Success "Found manifest: $($appManifest.FullName)"
 $acfContent = Get-Content $appManifest.FullName
 $installDirLine = $acfContent | Where-Object { $_ -match '"installdir"' }
 $installDir = ($installDirLine -split '"')[3]
-
 $libraryRoot = Split-Path (Split-Path $appManifest.FullName -Parent) -Parent
 $gamePath = Join-Path (Join-Path $libraryRoot "steamapps\common") $installDir
 Show-Success "Detected game folder: $gamePath"
@@ -137,6 +133,7 @@ $runspacePool = [runspacefactory]::CreateRunspacePool(1, 10)
 $runspacePool.Open()
 $runspaces = @()
 $totalFiles = $filesList.Count
+
 for ($i = 0; $i -lt $totalFiles; $i++) {
     $file = $filesList[$i]
     if ($file.type -ne "file") { continue }
@@ -149,14 +146,24 @@ for ($i = 0; $i -lt $totalFiles; $i++) {
     $ps.RunspacePool = $runspacePool
     $ps.AddScript({
         param($url, $out)
-        try { Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing }
-        catch { Show-Error "Failed: $out" }
+        try {
+            Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
+            Write-Host "[OK] Downloaded $out" -ForegroundColor Green
+        } catch {
+            Write-Host "[ERROR] Failed: $out" -ForegroundColor Red
+        }
     }).AddArgument($fileUrl).AddArgument($destination)
-    $handle = $ps.BeginInvoke()
+    
+    # Suppress BeginInvoke object output
+    $handle = $ps.BeginInvoke() | Out-Null
     $runspaces += @{ PowerShell = $ps; Handle = $handle }
 }
 
-foreach ($r in $runspaces) { $r.PowerShell.EndInvoke($r.Handle); $r.PowerShell.Dispose() }
+# Wait for all downloads (suppress output)
+foreach ($r in $runspaces) {
+    $r.PowerShell.EndInvoke($r.Handle) | Out-Null
+    $r.PowerShell.Dispose()
+}
 $runspacePool.Close()
 $runspacePool.Dispose()
 Show-Success "All downloads completed!"
@@ -195,12 +202,15 @@ foreach ($group in $rarGroups.GetEnumerator()) {
             Start-Process -FilePath $unrarExe -ArgumentList "x `"$firstRarPath`" `"$dest`" -y -inul" -WindowStyle Hidden -Wait
             foreach ($rarFile in $rarSet) { if (Test-Path $rarFile.FullName) { Remove-Item $rarFile.FullName -Force } }
         }).AddArgument($firstRar.FullName).AddArgument($group.Value).AddArgument($unrarPath)
-        $handle = $ps.BeginInvoke()
+        $handle = $ps.BeginInvoke() | Out-Null
         $runspaces += @{ PowerShell = $ps; Handle = $handle }
     }
 }
 
-foreach ($r in $runspaces) { $r.PowerShell.EndInvoke($r.Handle); $r.PowerShell.Dispose() }
+foreach ($r in $runspaces) {
+    $r.PowerShell.EndInvoke($r.Handle) | Out-Null
+    $r.PowerShell.Dispose()
+}
 $runspacePool.Close()
 $runspacePool.Dispose()
 Show-Success "File extraction complete and cache cleaned up!"
