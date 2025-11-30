@@ -150,7 +150,7 @@ for ($i = 0; $i -lt $totalFiles; $i++) {
     $ps.AddScript({
         param($url, $out)
         try {
-            # Suppress all output streams
+            # Suppress all runspace output streams
             Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing *> $null
             Write-Host "[OK] Downloaded $out" -ForegroundColor Green
         } catch {
@@ -158,14 +158,14 @@ for ($i = 0; $i -lt $totalFiles; $i++) {
         }
     }).AddArgument($fileUrl).AddArgument($destination)
 
-    # Save handle without piping
+    # Save handle before any piping
     $handle = $ps.BeginInvoke()
     $runspaces += @{ PowerShell = $ps; Handle = $handle }
 }
 
-# Wait for all downloads to finish, suppress EndInvoke output
+# Wait for all downloads and suppress EndInvoke output completely
 foreach ($r in $runspaces) {
-    if ($r.Handle) { $r.PowerShell.EndInvoke($r.Handle) | Out-Null }
+    if ($r.Handle) { $null = $r.PowerShell.EndInvoke($r.Handle) }
     $r.PowerShell.Dispose()
 }
 $runspacePool.Close()
@@ -206,7 +206,7 @@ foreach ($group in $rarGroups.GetEnumerator()) {
         $ps.AddScript({
             param($firstRarPath, $rarSet, $unrarExe)
             $dest = Split-Path $firstRarPath -Parent
-            # Suppress output of Start-Process
+            # Suppress all output streams from extraction
             Start-Process -FilePath $unrarExe -ArgumentList "x `"$firstRarPath`" `"$dest`" -y -inul" -WindowStyle Hidden -Wait *> $null
             foreach ($rarFile in $rarSet) {
                 if (Test-Path $rarFile.FullName) { Remove-Item $rarFile.FullName -Force }
@@ -219,10 +219,11 @@ foreach ($group in $rarGroups.GetEnumerator()) {
 }
 
 foreach ($r in $runspaces) {
-    if ($r.Handle) { $r.PowerShell.EndInvoke($r.Handle) | Out-Null }
+    if ($r.Handle) { $null = $r.PowerShell.EndInvoke($r.Handle) }
     $r.PowerShell.Dispose()
 }
 $runspacePool.Close()
 $runspacePool.Dispose()
 Show-Success "File extraction complete and cache cleaned up!"
+
 Show-Success "Happy Gaming!"
