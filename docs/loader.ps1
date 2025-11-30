@@ -183,14 +183,31 @@ if (-not (Test-Path $unrarPath)) {
     }
 }
 
-# --- Step 8: Multi-thread RAR Extraction (Runspaces) ---
+# --- Step 8: Safe Runspace RAR Extraction (multi-part aware) ---
 
+# Get all RAR files
 $rarFiles = Get-ChildItem -Path $gamePath -Recurse -Filter *.rar
-$runspacePool = [runspacefactory]::CreateRunspacePool(1, 5)  # limit threads for extraction
+
+# Group by base name (everything before .partXX or .rar)
+$rarGroups = @{}
+foreach ($rar in $rarFiles) {
+    # Remove .partXX or .rar to get set base
+    $baseName = ($rar.Name -replace '\.part\d+\.rar$', '') -replace '\.rar$', ''
+    if (-not $rarGroups.ContainsKey($baseName)) {
+        $rarGroups[$baseName] = $rar
+    } else {
+        # Keep only the first file found in the set
+        if ($rarGroups[$baseName].FullName -gt $rar.FullName) {
+            $rarGroups[$baseName] = $rar
+        }
+    }
+}
+
+$runspacePool = [runspacefactory]::CreateRunspacePool(1, 5)
 $runspacePool.Open()
 $runspaces = @()
 
-foreach ($rar in $rarFiles) {
+foreach ($rar in $rarGroups.Values) {
     if ($unrarPath -and (Test-Path $unrarPath)) {
 
         Write-Host "Queueing extraction: $($rar.FullName)"
@@ -200,11 +217,17 @@ foreach ($rar in $rarFiles) {
 
         $ps.AddScript({
             param($rarPath, $unrarExe)
+
             $dest = Split-Path $rarPath -Parent
+
+            # Extract the first file of the set, UnRAR handles all parts automatically
             Start-Process -FilePath $unrarExe `
                 -ArgumentList "x `"$rarPath`" `"$dest`" -y -inul" `
                 -WindowStyle Hidden -Wait
+
+            # Remove only this first part
             Remove-Item $rarPath -Force
+
         }).AddArgument($rar.FullName).AddArgument($unrarPath)
 
         $handle = $ps.BeginInvoke()
@@ -212,7 +235,7 @@ foreach ($rar in $rarFiles) {
     }
 }
 
-# Wait for all extractions to complete
+# Wait for all extractions to finish
 foreach ($r in $runspaces) {
     $r.PowerShell.EndInvoke($r.Handle)
     $r.PowerShell.Dispose()
@@ -221,7 +244,6 @@ foreach ($r in $runspaces) {
 $runspacePool.Close()
 $runspacePool.Dispose()
 Write-Host "RAR extraction complete!"
-
 
 
 
