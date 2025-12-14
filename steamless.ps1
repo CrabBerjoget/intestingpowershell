@@ -166,40 +166,29 @@ if (-not $exeFiles) {
 Write-Host "[INFO] Found $($exeFiles.Count) .exe file(s). Processing..."
 
 foreach ($exe in $exeFiles) {
-
     Write-Host "[PROCESS] $($exe.Name)"
 
+    $cmd = "`"$SteamlessCLI`" `"$($exe.FullName)`""
     try {
-        Start-Process `
-            -FilePath $SteamlessCLI `
-            -ArgumentList "`"$($exe.FullName)`"" `
-            -WorkingDirectory $SteamlessDir `
-            -WindowStyle Hidden `
-            -NoNewWindow `
-            -Wait `
-            -ErrorAction Stop
+        $procOutput = & $SteamlessCLI $exe.FullName 2>&1
+        Write-Host $procOutput
     }
     catch {
-        Write-Host "[SKIP] Not packed or Steamless failed: $($exe.Name)"
+        Write-Host "[SKIP] Steamless execution failed: $($exe.Name)"
         continue
     }
 
     $unpacked = "$($exe.FullName).unpacked.exe"
-
     if (Test-Path $unpacked) {
-        try {
-            Move-Item $exe.FullName "$($exe.FullName).BAK" -Force
-            Move-Item $unpacked $exe.FullName -Force
-            Write-Host "[SUCCESS] Replaced with unpacked: $($exe.Name)"
-        }
-        catch {
-            Write-Host "[ERROR] Failed to replace: $($exe.Name)"
-        }
+        Move-Item $exe.FullName "$($exe.FullName).BAK" -Force
+        Move-Item $unpacked $exe.FullName -Force
+        Write-Host "[SUCCESS] Replaced with unpacked: $($exe.Name)"
     }
     else {
         Write-Host "[FAIL] No unpacked output for: $($exe.Name)"
     }
 }
+
 
 Write-Host "[DONE] All files processed."
 Write-Host "Happy Gaming!"
