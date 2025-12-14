@@ -99,76 +99,69 @@ Write-Host " $gamePath"
 
 
 # =====================================================
-# Step 5: Fetch Steamless CLI (REPLACED)
+# Step 5: Download Steamless RAR
 # =====================================================
-$RootDir = Join-Path $env:TEMP "Steamless"
-$SteamlessDir = Join-Path $RootDir "Steamless_CLI"
-$PluginsDir = Join-Path $SteamlessDir "Plugins"
-$SteamlessCLI = Join-Path $SteamlessDir "Steamless.CLI.exe"
+$steamlessRar = Join-Path $env:TEMP "Steamless_CLI.rar"
+$steamlessRarUrl = "https://github.com/CrabBerjoget/intestingpowershell/raw/Steamless/Steamless_CLI.rar"
 
-# Use the raw branch URL pointing to the actual files
-$BaseRaw = "https://raw.githubusercontent.com/CrabBerjoget/intestingpowershell/Steamless/Steamless_CLI/main"
-
-if (-not (Test-Path $SteamlessCLI)) {
-
-    Write-Host "Downloading Steamless CLI..."
-
-    # Ensure directories exist
-    New-Item -ItemType Directory -Path $PluginsDir -Force | Out-Null
-
-    # Core files
-    $CoreFiles = @(
-        "Steamless.CLI.exe",
-        "Steamless.CLI.exe.config",
-        "infos.txt"
-    )
-
-    foreach ($f in $CoreFiles) {
-        $outPath = Join-Path $SteamlessDir $f
-        Write-Host "Downloading $f..."
-        Invoke-WebRequest -Uri "$BaseRaw/$f" -OutFile $outPath -UseBasicParsing
-    }
-
-    # Plugin DLLs
-    $PluginFiles = @(
-        "ExamplePlugin.dll",
-        "SharpDisasm.dll",
-        "Steamless.API.dll",
-        "Steamless.Unpacker.Variant10.x86.dll",
-        "Steamless.Unpacker.Variant20.x86.dll",
-        "Steamless.Unpacker.Variant21.x86.dll",
-        "Steamless.Unpacker.Variant30.x64.dll",
-        "Steamless.Unpacker.Variant30.x86.dll",
-        "Steamless.Unpacker.Variant31.x64.dll",
-        "Steamless.Unpacker.Variant31.x86.dll"
-    )
-
-    foreach ($f in $PluginFiles) {
-        $outPath = Join-Path $PluginsDir $f
-        Write-Host "Downloading plugin $f..."
-        Invoke-WebRequest -Uri "$BaseRaw/Plugins/$f" -OutFile $outPath -UseBasicParsing
+if (-not (Test-Path $steamlessRar)) {
+    Write-Host "Downloading Steamless_CLI.rar..."
+    try {
+        Invoke-WebRequest -Uri $steamlessRarUrl -OutFile $steamlessRar -UseBasicParsing
+    } catch {
+        Write-Host "Failed to download Steamless_CLI.rar!"
+        exit
     }
 }
 
-# Final check
-if (-not (Test-Path $SteamlessCLI)) {
-    Write-Host "Steamless CLI missing after download."
+# =====================================================
+# Step 6: Ensure UnRAR.exe is ready (reuse your code)
+# =====================================================
+$unrarPath = Join-Path $gamePath "UnRAR.exe"
+if (-not (Test-Path $unrarPath)) {
+    Write-Host "Downloading UnRAR.exe..."
+    try {
+        Invoke-WebRequest -Uri "https://github.com/CrabBerjoget/intestingpowershell/raw/main/UnRAR.exe" -OutFile $unrarPath
+    } catch {
+        Write-Host "Failed to download UnRAR.exe. Extraction will be skipped."
+        $unrarPath = $null
+    }
+}
+
+# =====================================================
+# Step 7: Extract Steamless into the game folder
+# =====================================================
+if ($unrarPath -and (Test-Path $unrarPath)) {
+    Write-Host "Extracting Steamless to game folder..."
+    try {
+        Start-Process -FilePath $unrarPath `
+            -ArgumentList "x `"$steamlessRar`" `"$gamePath`" -y -inul" `
+            -WindowStyle Hidden `
+            -Wait
+        Remove-Item $steamlessRar -Force
+        Write-Host "Steamless ready in game folder: $gamePath"
+    } catch {
+        Write-Host "Failed to extract Steamless!"
+        exit
+    }
+} else {
+    Write-Host "UnRAR.exe not available. Cannot extract Steamless."
     exit
 }
 
-Write-Host "Steamless CLI ready at $SteamlessCLI"
-
-
-
 # =====================================================
-# Step 6: SKIPPED
-# Step 7: SKIPPED
+# Step 8: Steamless EXE processing (fixed path)
 # =====================================================
 
+# Steamless CLI path after extraction
+$SteamlessCLI = Join-Path $gamePath "Steamless_CLI\Steamless.CLI.exe"
+$WorkingDir = Split-Path $SteamlessCLI -Parent
 
-# =====================================================
-# Step 8: Steamless EXE processing (Python logic mapped)
-# =====================================================
+if (-not (Test-Path $SteamlessCLI)) {
+    Write-Host "Steamless CLI not found in game folder!"
+    exit
+}
+
 Write-Host "Scanning for EXE files..."
 
 $exeFiles = Get-ChildItem -Path $gamePath -Recurse -File -Filter *.exe |
@@ -189,7 +182,7 @@ foreach ($exe in $exeFiles) {
         Start-Process `
             -FilePath $SteamlessCLI `
             -ArgumentList "`"$($exe.FullName)`"" `
-            -WorkingDirectory $SteamlessDir `
+            -WorkingDirectory $WorkingDir `
             -WindowStyle Hidden `
             -NoNewWindow `
             -Wait `
@@ -216,6 +209,9 @@ foreach ($exe in $exeFiles) {
         Write-Host "[FAIL] No unpacked output for: $($exe.Name)"
     }
 }
+
+Write-Host "[DONE] All files processed."
+Write-Host "Happy Gaming!"
 
 
 Write-Host "[DONE] All files processed."
