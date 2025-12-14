@@ -11,7 +11,7 @@ Write-Host "Using AppID: $AppID"
 
 
 # =====================================================
-# Step 1: Detect Steam Path (REUSED)
+# Step 1: Detect Steam Path
 # =====================================================
 $steamPath = (Get-ItemProperty "HKLM:\SOFTWARE\WOW6432Node\Valve\Steam" -ErrorAction SilentlyContinue).InstallPath
 if (-not $steamPath) {
@@ -24,21 +24,19 @@ if (-not $steamPath) {
 
 
 # =====================================================
-# Step 2: Find appmanifest (REUSED)
+# Step 2: Find appmanifest
 # =====================================================
 Write-Host "Checking main Steam steamapps folder first..."
-
 $appManifest = $null
-
 $mainSteamApps = Join-Path $steamPath "steamapps"
+
 if (Test-Path $mainSteamApps) {
     $acf = Get-ChildItem -Path $mainSteamApps -Filter "appmanifest_$AppID.acf" -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($acf) { $appManifest = $acf }
 }
 
 if (-not $appManifest) {
-    Write-Host "Not in main Steam folder. Scanning mounted drives..."
-
+    Write-Host "Scanning drives for Steam library..."
     $drives = Get-PSDrive -PSProvider FileSystem | Select-Object -ExpandProperty Root
 
     foreach ($drive in $drives) {
@@ -57,7 +55,6 @@ if (-not $appManifest) {
                 break
             }
         }
-
         if ($appManifest) { break }
     }
 }
@@ -71,7 +68,7 @@ Write-Host "Found manifest: $($appManifest.FullName)"
 
 
 # =====================================================
-# Step 3: Parse installdir (REUSED)
+# Step 3: Parse installdir
 # =====================================================
 $acfContent = Get-Content $appManifest.FullName
 $installDirLine = $acfContent | Where-Object { $_ -match '"installdir"' }
@@ -84,7 +81,7 @@ if (-not $installDir) {
 
 
 # =====================================================
-# Step 4: Build REAL game path (REUSED)
+# Step 4: Build game path
 # =====================================================
 $libraryRoot = Split-Path (Split-Path $appManifest.FullName -Parent) -Parent
 $gamePath = Join-Path (Join-Path $libraryRoot "steamapps\common") $installDir
@@ -94,12 +91,11 @@ if (-not (Test-Path $gamePath)) {
     exit
 }
 
-Write-Host "Detected game folder:"
-Write-Host " $gamePath"
+Write-Host "Detected game folder:`n $gamePath"
 
 
 # =====================================================
-# Step 5: Download Steamless RAR
+# Step 5: Download Steamless_CLI.rar
 # =====================================================
 $steamlessRar = Join-Path $env:TEMP "Steamless_CLI.rar"
 $steamlessRarUrl = "https://github.com/CrabBerjoget/intestingpowershell/raw/Steamless/Steamless_CLI.rar"
@@ -114,8 +110,9 @@ if (-not (Test-Path $steamlessRar)) {
     }
 }
 
+
 # =====================================================
-# Step 6: Ensure UnRAR.exe is ready (reuse your code)
+# Step 6: Ensure UnRAR.exe is ready
 # =====================================================
 $unrarPath = Join-Path $gamePath "UnRAR.exe"
 if (-not (Test-Path $unrarPath)) {
@@ -128,18 +125,21 @@ if (-not (Test-Path $unrarPath)) {
     }
 }
 
+
 # =====================================================
-# Step 7: Extract Steamless into the game folder
+# Step 7: Extract Steamless into game folder
 # =====================================================
+$SteamlessDir = Join-Path $gamePath "Steamless_CLI"
+
 if ($unrarPath -and (Test-Path $unrarPath)) {
     Write-Host "Extracting Steamless to game folder..."
     try {
         Start-Process -FilePath $unrarPath `
-            -ArgumentList "x `"$steamlessRar`" `"$gamePath`" -y -inul" `
+            -ArgumentList "x `"$steamlessRar`" `"$SteamlessDir`" -y -inul" `
             -WindowStyle Hidden `
             -Wait
         Remove-Item $steamlessRar -Force
-        Write-Host "Steamless ready in game folder: $gamePath"
+        Write-Host "Steamless ready in: $SteamlessDir"
     } catch {
         Write-Host "Failed to extract Steamless!"
         exit
@@ -149,20 +149,11 @@ if ($unrarPath -and (Test-Path $unrarPath)) {
     exit
 }
 
+
 # =====================================================
-# Step 8: Steamless EXE processing (fixed & exclude CLI/UnRAR)
+# Step 8: Process EXE files with Steamless
 # =====================================================
-
-# Steamless CLI path after extraction
-$SteamlessCLI = Join-Path $gamePath "Steamless_CLI\Steamless.CLI.exe"
-$WorkingDir = Split-Path $SteamlessCLI -Parent
-
-if (-not (Test-Path $SteamlessCLI)) {
-    Write-Host "Steamless CLI not found in game folder!"
-    exit
-}
-
-Write-Host "Scanning for EXE files..."
+$SteamlessCLI = Join-Path $SteamlessDir "Steamless.CLI.exe"
 
 $exeFiles = Get-ChildItem -Path $gamePath -Recurse -File -Filter *.exe |
     Where-Object { $_.Name -notmatch '\.bak$' -and $_.Name -notin @("Steamless.CLI.exe","UnRAR.exe") }
@@ -182,7 +173,7 @@ foreach ($exe in $exeFiles) {
         Start-Process `
             -FilePath $SteamlessCLI `
             -ArgumentList "`"$($exe.FullName)`"" `
-            -WorkingDirectory $WorkingDir `
+            -WorkingDirectory $SteamlessDir `
             -WindowStyle Hidden `
             -NoNewWindow `
             -Wait `
@@ -193,12 +184,10 @@ foreach ($exe in $exeFiles) {
         continue
     }
 
-    # Check for .unpacked.exe
     $unpacked = "$($exe.FullName).unpacked.exe"
 
     if (Test-Path $unpacked) {
         try {
-            # Backup original and replace with unpacked
             Move-Item $exe.FullName "$($exe.FullName).BAK" -Force
             Move-Item $unpacked $exe.FullName -Force
             Write-Host "[SUCCESS] Replaced with unpacked: $($exe.Name)"
@@ -213,6 +202,4 @@ foreach ($exe in $exeFiles) {
 }
 
 Write-Host "[DONE] All files processed."
-Write-Host "Happy Gaming!"
-
 Write-Host "Happy Gaming!"
