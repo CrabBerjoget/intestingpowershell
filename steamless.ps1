@@ -150,7 +150,7 @@ if ($unrarPath -and (Test-Path $unrarPath)) {
 }
 
 # =====================================================
-# Step 8: Steamless EXE processing (fixed path)
+# Step 8: Steamless EXE processing (fixed & exclude CLI/UnRAR)
 # =====================================================
 
 # Steamless CLI path after extraction
@@ -165,7 +165,7 @@ if (-not (Test-Path $SteamlessCLI)) {
 Write-Host "Scanning for EXE files..."
 
 $exeFiles = Get-ChildItem -Path $gamePath -Recurse -File -Filter *.exe |
-    Where-Object { $_.Name -notmatch '\.bak$' }
+    Where-Object { $_.Name -notmatch '\.bak$' -and $_.Name -notin @("Steamless.CLI.exe","UnRAR.exe") }
 
 if (-not $exeFiles) {
     Write-Host "[INFO] No .exe files found."
@@ -189,14 +189,16 @@ foreach ($exe in $exeFiles) {
             -ErrorAction Stop
     }
     catch {
-        Write-Host "[SKIP] Not packed or Steamless failed"
+        Write-Host "[SKIP] Not packed or Steamless failed: $($exe.Name)"
         continue
     }
 
+    # Check for .unpacked.exe
     $unpacked = "$($exe.FullName).unpacked.exe"
 
     if (Test-Path $unpacked) {
         try {
+            # Backup original and replace with unpacked
             Move-Item $exe.FullName "$($exe.FullName).BAK" -Force
             Move-Item $unpacked $exe.FullName -Force
             Write-Host "[SUCCESS] Replaced with unpacked: $($exe.Name)"
@@ -213,6 +215,4 @@ foreach ($exe in $exeFiles) {
 Write-Host "[DONE] All files processed."
 Write-Host "Happy Gaming!"
 
-
-Write-Host "[DONE] All files processed."
 Write-Host "Happy Gaming!"
