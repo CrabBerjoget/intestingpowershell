@@ -151,7 +151,7 @@ if ($unrarPath -and (Test-Path $unrarPath)) {
 
 
 # =====================================================
-# Step 8: Process EXE files with Steamless
+# Step 8: Process EXE files with Steamless (clean output)
 # =====================================================
 $SteamlessCLI = Join-Path $SteamlessDir "Steamless.CLI.exe"
 
@@ -166,29 +166,45 @@ if (-not $exeFiles) {
 Write-Host "[INFO] Found $($exeFiles.Count) .exe file(s). Processing..."
 
 foreach ($exe in $exeFiles) {
+
     Write-Host "[PROCESS] $($exe.Name)"
 
-    $cmd = "`"$SteamlessCLI`" `"$($exe.FullName)`""
     try {
-        $procOutput = & $SteamlessCLI $exe.FullName 2>&1
-        Write-Host $procOutput
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = $SteamlessCLI
+        $psi.Arguments = "`"$($exe.FullName)`""
+        $psi.WorkingDirectory = $SteamlessDir
+        $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+        $psi.CreateNoWindow = $true
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError  = $true
+        $psi.UseShellExecute = $false
+
+        $proc = [System.Diagnostics.Process]::Start($psi)
+        $proc.WaitForExit()
     }
     catch {
-        Write-Host "[SKIP] Steamless execution failed: $($exe.Name)"
+        Write-Host "[SKIP] Not packed or Steamless failed: $($exe.Name)"
         continue
     }
 
     $unpacked = "$($exe.FullName).unpacked.exe"
+
     if (Test-Path $unpacked) {
-        Move-Item $exe.FullName "$($exe.FullName).BAK" -Force
-        Move-Item $unpacked $exe.FullName -Force
-        Write-Host "[SUCCESS] Replaced with unpacked: $($exe.Name)"
+        try {
+            Move-Item $exe.FullName "$($exe.FullName).BAK" -Force
+            Move-Item $unpacked $exe.FullName -Force
+            Write-Host "[SUCCESS] Replaced with unpacked: $($exe.Name)"
+        }
+        catch {
+            Write-Host "[ERROR] Failed to replace: $($exe.Name)"
+        }
     }
     else {
         Write-Host "[FAIL] No unpacked output for: $($exe.Name)"
     }
 }
 
-
 Write-Host "[DONE] All files processed."
 Write-Host "Happy Gaming!"
+
