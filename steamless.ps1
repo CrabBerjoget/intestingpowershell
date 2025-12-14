@@ -177,6 +177,7 @@ foreach ($exe in $exeFiles) {
         Start-Process `
             -FilePath $SteamlessCLI `
             -ArgumentList "`"$($exe.FullName)`"" `
+            -WorkingDirectory $SteamlessDir `
             -WindowStyle Hidden `
             -NoNewWindow `
             -Wait `
@@ -203,6 +204,7 @@ foreach ($exe in $exeFiles) {
         Write-Host "[FAIL] No unpacked output for: $($exe.Name)"
     }
 }
+
 
 Write-Host "[DONE] All files processed."
 Write-Host "Happy Gaming!"
