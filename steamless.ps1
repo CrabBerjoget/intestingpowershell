@@ -106,14 +106,17 @@ $SteamlessDir = Join-Path $RootDir "Steamless_CLI"
 $PluginsDir = Join-Path $SteamlessDir "Plugins"
 $SteamlessCLI = Join-Path $SteamlessDir "Steamless.CLI.exe"
 
-$BaseRaw = "https://raw.githubusercontent.com/CrabBerjoget/intestingpowershell/Steamless/Steamless_CLI"
+# Use the raw branch URL pointing to the actual files
+$BaseRaw = "https://raw.githubusercontent.com/CrabBerjoget/intestingpowershell/Steamless/Steamless_CLI/main"
 
 if (-not (Test-Path $SteamlessCLI)) {
 
     Write-Host "Downloading Steamless CLI..."
 
+    # Ensure directories exist
     New-Item -ItemType Directory -Path $PluginsDir -Force | Out-Null
 
+    # Core files
     $CoreFiles = @(
         "Steamless.CLI.exe",
         "Steamless.CLI.exe.config",
@@ -121,9 +124,12 @@ if (-not (Test-Path $SteamlessCLI)) {
     )
 
     foreach ($f in $CoreFiles) {
-        Invoke-WebRequest "$BaseRaw/$f" -OutFile (Join-Path $SteamlessDir $f) -UseBasicParsing
+        $outPath = Join-Path $SteamlessDir $f
+        Write-Host "Downloading $f..."
+        Invoke-WebRequest -Uri "$BaseRaw/$f" -OutFile $outPath -UseBasicParsing
     }
 
+    # Plugin DLLs
     $PluginFiles = @(
         "ExamplePlugin.dll",
         "SharpDisasm.dll",
@@ -138,14 +144,20 @@ if (-not (Test-Path $SteamlessCLI)) {
     )
 
     foreach ($f in $PluginFiles) {
-        Invoke-WebRequest "$BaseRaw/Plugins/$f" -OutFile (Join-Path $PluginsDir $f) -UseBasicParsing
+        $outPath = Join-Path $PluginsDir $f
+        Write-Host "Downloading plugin $f..."
+        Invoke-WebRequest -Uri "$BaseRaw/Plugins/$f" -OutFile $outPath -UseBasicParsing
     }
 }
 
+# Final check
 if (-not (Test-Path $SteamlessCLI)) {
     Write-Host "Steamless CLI missing after download."
     exit
 }
+
+Write-Host "Steamless CLI ready at $SteamlessCLI"
+
 
 
 # =====================================================
