@@ -1,3 +1,10 @@
+if ([Threading.Thread]::CurrentThread.ApartmentState -ne "STA") {
+    Start-Process powershell `
+        -ArgumentList "-STA -ExecutionPolicy Bypass -File `"$PSCommandPath`"" `
+        -Verb RunAs
+    exit
+}
+
 cls
 [Console]::InputEncoding = [System.Text.Encoding]::UTF8
 
