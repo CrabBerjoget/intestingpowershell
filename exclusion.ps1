@@ -11,7 +11,6 @@ if (-not ([Security.Principal.WindowsPrincipal] `
 }
 
 [Console]::InputEncoding = [System.Text.Encoding]::UTF8
-
 # ================== UI HELPERS ==================
 function Show-Header($title) {
     $line = "═" * ($title.Length + 4)
