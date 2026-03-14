@@ -34,9 +34,12 @@ if (Test-Path $libraryFoldersFile) {
     $paths = $vdfContent | Select-String -Pattern '"path"\s+"([^"]+)"'
     foreach ($match in $paths.Matches) {
         $libPath = $match.Groups[1].Value.Replace("\\", "\")
-        $steamAppsPath = Join-Path $libPath "steamapps"
-        if ($searchPaths -notcontains $steamAppsPath) {
-            $searchPaths += $steamAppsPath
+        # Only add to search paths if the drive/path actually exists
+        if (Test-Path $libPath) {
+            $steamAppsPath = Join-Path $libPath "steamapps"
+            if ($searchPaths -notcontains $steamAppsPath) {
+                $searchPaths += $steamAppsPath
+            }
         }
     }
 }
@@ -105,6 +108,7 @@ Invoke-WebRequest -Uri $part2Url -OutFile $part2Path
 # --- Step 4: Extract files to game folder using UnRAR ---
 Write-Host "Extracting files to $gameFolder..."
 # 'x' for extract with full paths, '-y' to assume yes on queries, '-o+' to overwrite existing files
+# For multi-part rar files, pointing UnRAR to part1 automatically extracts the rest
 $unrarArgs = @("x", "-y", "-o+", $part1Path, "$gameFolder\")
 $unrarProcess = Start-Process -FilePath $unrarPath -ArgumentList $unrarArgs -Wait -NoNewWindow -PassThru
 
