@@ -52,8 +52,44 @@ $ClearLogButton = $Window.FindName("ClearLogButton")
 $LogTextBox = $Window.FindName("LogTextBox")
 $Dispatcher = $Window.Dispatcher
 
-# Pre-populate common AppIDs (optional)
-$AppIdCombo.Items.Add("2358720") | Out-Null # Black Myth: Wukong Example
+# --- Fetch Supported AppIDs from API ---
+$apiRunspace = [runspacefactory]::CreateRunspace()
+$apiRunspace.ApartmentState = "STA"
+$apiRunspace.Open()
+
+$apiPs = [PowerShell]::Create()
+$apiPs.Runspace = $apiRunspace
+$apiPs.Runspace.SessionStateProxy.SetVariable("AppIdCombo", $AppIdCombo)
+$apiPs.Runspace.SessionStateProxy.SetVariable("Dispatcher", $Dispatcher)
+
+[void]$apiPs.AddScript({
+    try {
+        $Dispatcher.Invoke([Action]{ $AppIdCombo.Text = "Loading supported games..." })
+        $apiUrl = "https://steamunlockonennabe.duckdns.org/api/onennabe"
+        $apiData = Invoke-RestMethod -Uri $apiUrl -UseBasicParsing -ErrorAction Stop
+        
+        $supportedGames = $apiData | Where-Object { $_.online_supported -eq 'Yes' -or $_.bypass_supported -eq 'Yes' }
+        
+        $Dispatcher.Invoke([Action]{
+            $AppIdCombo.Text = ""
+            $AppIdCombo.Items.Clear()
+            foreach ($game in $supportedGames) {
+                [void]$AppIdCombo.Items.Add("$($game.appid) - $($game.name)")
+            }
+            if ($supportedGames.Count -gt 0) {
+                $AppIdCombo.SelectedIndex = 0
+            }
+        })
+    } catch {
+        $Dispatcher.Invoke([Action]{
+            $AppIdCombo.Text = ""
+            $AppIdCombo.ToolTip = "Failed to load API data."
+            [void]$AppIdCombo.Items.Add("2358720") # Fallback to default
+        })
+    }
+})
+
+$apiPs.BeginInvoke() | Out-Null
 
 # Helper to write to UI from main thread
 function Update-Log {
@@ -70,12 +106,15 @@ $ClearLogButton.Add_Click({
 
 # --- Step 2: Handle Start Button Click (Async Execution) ---
 $StartButton.Add_Click({
-    $appId = $AppIdCombo.Text.Trim()
+    $appIdRaw = $AppIdCombo.Text.Trim()
     
-    if ([string]::IsNullOrWhiteSpace($appId)) {
-        [System.Windows.MessageBox]::Show("Please enter an AppID.", "Error", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning)
+    if ([string]::IsNullOrWhiteSpace($appIdRaw) -or $appIdRaw -eq "Loading supported games...") {
+        [System.Windows.MessageBox]::Show("Please enter a valid AppID.", "Error", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning)
         return
     }
+
+    # Extract AppID from format "AppID - Name" if a dropdown item was selected
+    $appId = ($appIdRaw -split ' - ')[0].Trim()
 
     $StartButton.IsEnabled = $false
     Update-Log "Starting patch process for AppID: $appId"
