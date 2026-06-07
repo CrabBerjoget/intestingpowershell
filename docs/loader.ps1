@@ -95,7 +95,7 @@ Write-Host "Detected game folder: $gamePath"
 # --- Step 5: Get file list from GitHub branch ---
 
 $branch     = $AppID
-$repo1Owner = "3circledesign"
+$repo1Owner = "CrabBerjoget"
 $repo1Name  = "intestingpowershell"
 
 $repo2Owner = "CrabBerjoget"
